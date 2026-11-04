@@ -10,6 +10,8 @@ outputs/
 *.tar.gz
 *.png
 *.jpg
+*.jpeg
+*.webp
 *.pdf
 *.log
 .env*
@@ -17,3 +19,4 @@ outputs/
 tests/browser.cjs
 tests/verify-result.py
 tests/excel-open.ps1
+tests/http-qa.cjs

@@ -293,7 +293,15 @@
   $('prev').onclick = () => { state.page--; renderRecords(); }; $('next').onclick = () => { state.page++; renderRecords(); };
   $('sort-row').onclick = () => { state.ascending = !state.ascending; renderRecords(); };
   $$('#status-tabs button').forEach(b => b.onclick = () => { state.filter = b.dataset.filter; state.page = 1; $$('#status-tabs button').forEach(x => x.classList.toggle('selected', x === b)); renderRecords(); });
-  $$('.nav').forEach(b => b.onclick = () => { state.view = b.dataset.view; $$('.nav').forEach(x => x.classList.toggle('active', x === b)); $('records-view').hidden = state.view !== 'records'; $('mappings-view').hidden = state.view !== 'mappings'; $('view-title').textContent = state.view === 'records' ? 'Revenue SKU匹配' : 'ASIN映射库'; });
+  $$('.nav').forEach(b => b.onclick = () => {
+    state.view = b.dataset.view;
+    $$('.nav').forEach(x => { x.classList.toggle('active', x === b); if (x === b) x.setAttribute('aria-current', 'page'); else x.removeAttribute('aria-current'); });
+    for (const view of ['records', 'mappings', 'metadata']) $(view + '-view').hidden = state.view !== view;
+    const imageView = state.view === 'metadata';
+    $('report-workspace').hidden = imageView; $('report-actions').hidden = imageView; $('image-local').hidden = !imageView;
+    $('view-category').textContent = imageView ? '图片元数据' : '报表核对';
+    $('view-title').textContent = {records: 'Revenue SKU匹配', mappings: 'ASIN映射库', metadata: 'AI图片元标签'}[state.view];
+  });
   $$('#mapping-tabs button').forEach(b => b.onclick = () => { state.mappingMode = b.dataset.mapping; state.mappingPage = 1; $$('#mapping-tabs button').forEach(x => x.classList.toggle('selected', x === b)); renderMappings(); });
   $('mapping-search').oninput = e => { state.mappingSearch = e.target.value; state.mappingPage = 1; renderMappings(); };
   $('mapping-prev').onclick = () => { state.mappingPage--; renderMappings(); }; $('mapping-next').onclick = () => { state.mappingPage++; renderMappings(); };
