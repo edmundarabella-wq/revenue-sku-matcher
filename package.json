@@ -1,11 +1,12 @@
 {
   "name": "revenue-sku-matcher",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "private": true,
-  "description": "Browser-local Revenue SKU matching workbench",
+  "description": "Browser-local Amazon report, image, packing, and shipping tools",
   "scripts": {
     "build": "node build.cjs",
     "test": "node --test tests/engine.test.cjs",
-    "test:browser": "node tests/toolbox-browser.cjs"
+    "test:browser": "node tests/toolbox-browser.cjs",
+    "test:shipping": "node tests/shipping-browser.cjs"
   }
 }

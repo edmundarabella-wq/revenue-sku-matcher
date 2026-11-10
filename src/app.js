@@ -297,10 +297,12 @@
     state.view = b.dataset.view;
     $$('.nav').forEach(x => { x.classList.toggle('active', x === b); if (x === b) x.setAttribute('aria-current', 'page'); else x.removeAttribute('aria-current'); });
     for (const view of ['records', 'mappings', 'metadata']) $(view + '-view').hidden = state.view !== view;
-    const imageView = state.view === 'metadata';
-    $('report-workspace').hidden = imageView; $('report-actions').hidden = imageView; $('image-local').hidden = !imageView;
-    $('view-category').textContent = imageView ? '图片元数据' : '报表核对';
-    $('view-title').textContent = {records: 'Revenue SKU匹配', mappings: 'ASIN映射库', metadata: 'AI图片元标签'}[state.view];
+    const imageView = state.view === 'metadata', shippingView = ['packing', 'shipping'].includes(state.view);
+    $('report-workspace').hidden = imageView || shippingView; $('report-actions').hidden = imageView || shippingView; $('image-local').hidden = !imageView;
+    $('shipping-view').hidden = !shippingView;
+    $('view-category').textContent = imageView ? '图片元数据' : shippingView ? '发货工作台' : '报表核对';
+    $('view-title').textContent = {records: 'Revenue SKU匹配', mappings: 'ASIN映射库', metadata: 'AI图片元标签', packing: '装箱自动分配', shipping: 'JH出货匹配'}[state.view];
+    if (shippingView) ShippingEmbed.show(state.view);
   });
   $$('#mapping-tabs button').forEach(b => b.onclick = () => { state.mappingMode = b.dataset.mapping; state.mappingPage = 1; $$('#mapping-tabs button').forEach(x => x.classList.toggle('selected', x === b)); renderMappings(); });
   $('mapping-search').oninput = e => { state.mappingSearch = e.target.value; state.mappingPage = 1; renderMappings(); };

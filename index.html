@@ -8,13 +8,23 @@
 <title>Amazon本地工具箱</title>
 <link rel="stylesheet" href="src/style.css">
 <link rel="stylesheet" href="src/image-style.css">
+<link rel="stylesheet" href="src/tools-style.css">
 <style>a.btn{text-decoration:none}.download-name{display:block;overflow-wrap:anywhere;line-height:1.8;margin-bottom:16px}#download-dialog{width:620px}</style>
 </head>
 <body>
 <aside class="sidebar">
   <div class="brand"><span class="brand-mark"><i data-lucide="panels-top-left"></i></span><span>AMAZON<small>本地工具箱</small></span></div>
-  <nav aria-label="工具导航"><span class="nav-label">报表</span><button class="nav active" data-view="records" aria-current="page"><i data-lucide="table-2"></i>SKU匹配<span id="nav-count"></span></button><button class="nav" data-view="mappings"><i data-lucide="git-branch"></i>ASIN映射库<span id="mapping-count"></span></button><span class="nav-label">图片</span><button class="nav" data-view="metadata"><i data-lucide="image-plus"></i>AI图片元标签</button></nav>
-  <div class="side-bottom"><span class="dot"></span>本地处理 <span class="version">v1.1</span></div>
+  <nav aria-label="工具导航">
+    <span class="nav-label">报表</span>
+    <button class="nav active" data-view="records" aria-current="page"><i data-lucide="table-2"></i>SKU匹配<span id="nav-count"></span></button>
+    <button class="nav" data-view="mappings"><i data-lucide="git-branch"></i>ASIN映射库<span id="mapping-count"></span></button>
+    <span class="nav-label">图片</span>
+    <button class="nav" data-view="metadata"><i data-lucide="image-plus"></i>AI图片元标签</button>
+    <span class="nav-label">发货</span>
+    <button class="nav" data-view="packing"><i data-lucide="package-open"></i>装箱分配</button>
+    <button class="nav" data-view="shipping"><i data-lucide="truck"></i>JH出货匹配</button>
+  </nav>
+  <div class="side-bottom"><span class="dot"></span>本地处理 <span class="version">v1.2</span></div>
 </aside>
 <main>
   <header class="topbar"><div><div class="eyebrow" id="view-category">报表核对</div><h1 id="view-title">Revenue SKU匹配</h1></div><div class="top-actions" id="report-actions"><button class="btn" id="audit-export" disabled><i data-lucide="list-checks"></i><span>核对明细</span></button><button class="btn primary" id="export" disabled><i data-lucide="download"></i><span>导出报表</span></button></div><span id="image-local" class="local-label" hidden><i data-lucide="shield-check"></i>图片本地处理</span></header>
@@ -52,11 +62,16 @@
       <div class="image-list" id="image-list"></div>
     </div>
   </section>
+  <section id="shipping-view" hidden>
+    <p id="shipping-loading" class="shipping-loading" role="status" hidden>正在加载工作台</p>
+    <iframe id="shipping-frame" title="出货与装箱工作台" allow="clipboard-write" sandbox="allow-scripts allow-same-origin allow-downloads allow-modals" hidden></iframe>
+  </section>
 </main>
 <dialog id="detail-dialog"><form method="dialog" class="dialog-header"><div><h2>记录核对</h2><span id="detail-subtitle"></span></div><button class="icon-btn" aria-label="关闭" title="关闭"><i data-lucide="x"></i></button></form><div class="dialog-content"><div id="detail-fields" class="detail-fields"></div><div class="detail-heading"><h3>后台候选记录</h3><select id="detail-sku" aria-label="选择本行SKU"></select></div><div class="candidate-wrap"><table><thead><tr><th>选择</th><th>后台行</th><th>SKU</th><th class="numeric">业务金额</th><th class="numeric">后台数量</th><th>本行数量</th></tr></thead><tbody id="detail-candidates"></tbody></table></div><div class="detail-evidence" id="detail-evidence"></div><label class="field">核对备注<input id="detail-note" maxlength="200" placeholder="核对依据"></label><label class="check"><input id="save-identity" type="checkbox">同时保存为已确认ASIN映射</label><div class="inline-error" id="detail-error" role="alert"></div></div><div class="dialog-footer"><button class="btn danger" id="remove-override" hidden><i data-lucide="rotate-ccw"></i>撤回本行修正</button><span class="spacer"></span><button class="btn" id="detail-close">关闭</button><button class="btn primary" id="save-override"><i data-lucide="check"></i>确认本行</button></div></dialog>
 <dialog id="mapping-dialog"><form method="dialog" class="dialog-header"><h2 id="mapping-dialog-title">新增映射</h2><button class="icon-btn" aria-label="关闭" title="关闭"><i data-lucide="x"></i></button></form><form id="mapping-form"><div class="dialog-content form-grid"><label class="field">账号<input id="map-account" required maxlength="100"></label><label class="field">站点<input id="map-market" required placeholder="amazon.com" maxlength="100"></label><label class="field">ASIN<input id="map-asin" required maxlength="10" minlength="10"></label><label class="field">卖家SKU<input id="map-sku" required maxlength="255"></label><div id="mapping-error" class="inline-error" role="alert"></div></div><div class="dialog-footer"><button type="button" class="btn" id="mapping-close">取消</button><button class="btn primary" type="submit"><i data-lucide="check"></i>保存映射</button></div></form></dialog>
 <dialog id="import-dialog"><form method="dialog" class="dialog-header"><div><h2>导入ASIN映射</h2><span id="import-filename"></span></div><button class="icon-btn" aria-label="关闭" title="关闭"><i data-lucide="x"></i></button></form><div class="dialog-content"><div class="form-grid"><label class="field">工作表<select id="import-sheet"></select></label><label class="field">表头行<input id="import-header" type="number" min="1" value="1"></label><label class="field">ASIN列<select id="import-asin"></select></label><label class="field">SKU列<select id="import-sku"></select></label><label class="field">账号<input id="import-account" required></label><label class="field">站点<input id="import-market" required placeholder="amazon.com"></label></div><div class="import-preview" id="import-preview"></div><div class="inline-error" id="import-error" role="alert"></div></div><div class="dialog-footer"><button class="btn" id="import-close">取消</button><button class="btn primary" id="import-save"><i data-lucide="check"></i>确认导入</button></div></dialog>
 <dialog id="download-dialog"><form method="dialog" class="dialog-header"><h2>报表已生成</h2><button class="icon-btn" aria-label="关闭" title="关闭"><i data-lucide="x"></i></button></form><div class="dialog-content"><strong id="download-name" class="download-name"></strong><div id="download-summary" class="muted"></div></div><div class="dialog-footer"><button class="btn" id="download-close">关闭</button><a class="btn primary" id="download-ready"><i data-lucide="download"></i>下载报表</a></div></dialog>
 <div id="toast" class="toast" role="status" hidden></div>
-<script src="vendor/jszip.min.js"></script><script src="vendor/sax.js"></script><script src="vendor/lucide.min.js"></script><script src="src/engine.js"></script><script src="src/workbook.js"></script><script src="src/image-metadata.js"></script><script src="src/image-app.js"></script><script src="src/app.js"></script>
+<!-- SHIPPING_BUNDLE -->
+<script src="vendor/jszip.min.js"></script><script src="vendor/sax.js"></script><script src="vendor/lucide.min.js"></script><script src="src/engine.js"></script><script src="src/workbook.js"></script><script src="src/image-metadata.js"></script><script src="src/image-app.js"></script><script src="src/tools-embed.js"></script><script src="src/app.js"></script>
 </body></html>

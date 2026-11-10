@@ -12,7 +12,16 @@
 
 该功能只负责写入和校验指定XMP关键词，不自动判断图片是否为AI生成，也不保证平台审核结果。
 
+## 装箱分配与JH出货匹配
+
+来源为用户提供的装箱自动分配 HTML 和包含同一装箱功能的 JH 出货匹配工作台 v1.2。使用 JH 工作台的装箱实现，保留领星与工厂两种导出。复用工作台的出货、采购和匹配流程，两个入口共享内置工作台但分别保存本次输入。
+
+导入到 src/shipping 的源代码不包含原始报表、订单样本或本机路径。已将演示内容替换为合成示例。保留独立文档及样式，避免覆盖工具箱原有样式和行为。
+
 ## 内置依赖
+
+- SheetJS CE 0.20.3：出货表格读取和导出，许可证见 vendor/shipping/LICENSE。
+- XlsxPopulate 1.21.0：装箱模板读写和工厂装箱单导出，许可证见 vendor/shipping/XLSX-POPULATE-LICENSE。
 
 - JSZip：Excel压缩包读写和图片ZIP打包，许可证见`vendor/JSZIP-LICENSE.txt`。
 - SAX：报表XML读取，许可证见`vendor/SAX-LICENSE.txt`。

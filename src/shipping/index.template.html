@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; connect-src 'none'; font-src 'none'; object-src 'none'; base-uri 'none'"><title>出货匹配工作台</title>
+<style>/* APP_CSS */</style></head>
+<body>
+<div class="shell">
+<main>
+<header class="topbar shipping-toolbar">
+  <nav aria-label="处理步骤">
+    <button class="nav-step active" data-step="1"><span class="step-n">1</span><span>录入出货单<small id="navSupply">固定表头，直接粘贴</small></span><span class="nav-check" id="check1"></span></button>
+    <button class="nav-step" data-step="2"><span class="step-n">2</span><span>录入采购单<small id="navOrders">订单编号与采购货号</small></span><span class="nav-check" id="check2"></span></button>
+    <button class="nav-step" data-step="3"><span class="step-n">3</span><span>匹配与导出<small id="navResult">核对结果，完成今日出货</small></span></button>
+  </nav>
+  <span id="breadcrumb" hidden></span>
+  <div class="top-actions"><button class="quiet" id="helpBtn">使用说明</button><button class="quiet" id="demoBtn">试用示例</button></div>
+</header>
+  <div class="workspace">
+  <section id="step1" class="step-panel">
+    <div class="work-surface">
+      <div class="surface-head"><div class="segmented" aria-label="出货单格式"><button id="modeFixed" class="selected">尺码数量表</button><button id="modeDetail">已转换的两列明细</button></div><div class="actions"><button id="supplyFileBtn" class="btn">导入文件</button><button id="pasteSupplyBtn" class="btn primary-light">粘贴出货内容</button><input id="supplyFile" type="file" accept=".xls,.xlsx,.xlsm,.csv,.tsv,.txt" hidden></div></div>
+      <div id="fixedTools" class="template-bar"><div><span class="dot"></span><b>固定表头</b><span>只复制数据行，不含标题与合计</span></div><button class="quiet" id="manageCols">调整尺码列</button></div>
+      <div id="gridArea"><div class="grid-scroll" id="gridScroll"><table class="entry-grid" id="supplyGrid" aria-label="出货数量录入表"></table></div><div class="grid-footer"><span>直接粘贴，自动增加所需行数，无需预先添加行。</span><button class="quiet danger" id="clearSupply">清空出货</button></div><div class="supply-overview" aria-live="polite"><div><strong>汇总预览</strong><span id="supplyRowCount">0 行有出货</span><span id="supplySkuCount">0 个货号</span></div><div class="grand-total">总出货数量 <strong id="supplyGrandTotal">0</strong> 双</div></div></div>
+      <div id="detailArea" hidden><label class="textarea-label" for="detailText">粘贴两列：货号、数量</label><textarea id="detailText" spellcheck="false" placeholder="货号&#9;数量&#10;DEMO1-黑色-8.5&#9;1"></textarea><div class="detail-actions"><button class="btn" id="readDetail">识别明细</button></div></div>
+      <div id="supplyMessages" class="messages" aria-live="polite"></div>
+    </div>
+    <section class="preview-surface"><div class="preview-heading"><h2>转换明细预览 <span id="supplyCount">尚未录入</span></h2><button class="quiet" id="exportSupply" disabled>导出转换明细</button></div><div id="supplyPreview" class="preview-table"></div></section>
+    <div class="bottom-bar"><span id="supplySummary">先粘贴或导入今天的出货单</span><button id="nextOrders" class="btn primary" disabled>确认出货明细，下一步 <span aria-hidden="true">→</span></button></div>
+  </section>
+  <section id="step2" class="step-panel" hidden>
+    <div class="work-surface"><div class="surface-head"><h2>采购订单明细</h2><div class="actions"><button class="btn" id="ordersFileBtn">导入文件</button><input type="file" id="ordersFile" accept=".xls,.xlsx,.xlsm,.csv,.tsv,.txt" hidden><button class="btn primary-light" id="focusOrders">粘贴采购内容</button></div></div>
+      <div class="template-bar"><div><span class="dot"></span><b>保持原始行序</b><span>点击单元格直接粘贴，自动扩行</span></div></div>
+      <div class="grid-scroll orders-grid-scroll"><table class="entry-grid orders-grid" id="ordersGrid" aria-label="采购订单录入表"></table></div>
+      <div class="grid-footer" id="ordersGridFooter"><span>每行按 1 双处理；中间空行保留，编号按文本保存。</span><button class="quiet danger" id="clearOrders">清空采购单</button></div><div id="ordersMessages" class="messages" aria-live="polite"></div>
+    </div>
+    <div class="rule-panel"><div><h2>匹配规则</h2><p>同货号按原始行序分配，每行占用 1 双；未匹配订单的 C 列保持空白。</p></div><label for="returnMode">匹配后 C 列填写<select id="returnMode"><option value="date" selected>今日日期（YYYY/MM/DD）</option><option value="total">该货号的原出货总数（沿用原宏）</option><option value="one">每条订单填写 1</option></select></label></div>
+    <section class="preview-surface"><div class="preview-heading"><h2>采购单预览 <span id="ordersCount">尚未录入</span></h2><button class="quiet" id="readOrders">重新识别</button></div><div class="order-preservation-note">预览、匹配、复制和导出均保持录入顺序，中间空行占位保留。</div><div id="ordersPreview" class="preview-table"><div class="empty-inline"><span class="empty-icon" aria-hidden="true">▤</span><div><strong>粘贴后自动识别两列内容</strong><p>预览与录入顺序一致。</p></div></div></div><div class="pagination" id="ordersPreviewPager"><span id="ordersPreviewSummary"></span><div><button class="btn" id="ordersPreviewPrev">上一页</button><span id="ordersPreviewPage"></span><button class="btn" id="ordersPreviewNext">下一页</button></div></div></section>
+    <div class="bottom-bar"><button class="btn" id="backSupply">上一步</button><span id="ordersSummary">待录入采购订单</span><button id="runMatch" class="btn primary" disabled>开始匹配 <span aria-hidden="true">→</span></button></div>
+  </section>
+  <section id="step3" class="step-panel" hidden>
+    <div class="page-heading"><div><h1 id="resultTitle">出货匹配结果</h1><p id="resultSubtitle">匹配后可导出采购结果、转换明细与出货余额。</p></div><button class="btn primary" id="exportAll" disabled>导出完整结果 .xlsx</button></div>
+    <div id="resultEmpty" class="work-surface result-empty"><h2>还没有匹配结果</h2><p>先录入出货明细和采购订单，再开始匹配。</p><button class="btn primary-light" id="goSupply">录入出货单</button></div>
+    <div id="resultBody" hidden><div class="stats"><div><span>本次出货</span><strong id="statTotal">0</strong><small>双</small></div><div class="stat-good"><span>已匹配订单</span><strong id="statMatched">0</strong><small>行 / 双</small></div><div><span>剩余出货</span><strong id="statLeft">0</strong><small>双</small></div><div><span>未匹配订单</span><strong id="statUnmatched">0</strong><small>行</small></div></div>
+      <div class="reconcile" id="reconcile"></div>
+      <div class="work-surface result-surface"><div class="surface-head"><div class="segmented"><button class="selected" id="viewOrders">采购匹配结果</button><button id="viewInventory">出货数量余额</button></div><div class="actions result-actions"><button id="copyAllC" class="btn">按原序复制全部 C 列</button><button id="copyResult" class="btn">复制当前结果</button><button id="exportCurrent" class="btn primary-light">导出当前表格</button></div></div><div class="table-tools"><div class="filter-group" id="orderFilters"><button class="filter selected" data-filter="all">全部</button><button class="filter" data-filter="matched">已匹配</button><button class="filter" data-filter="unmatched">未匹配</button></div><label class="search"><span>搜索</span><input type="search" id="search" placeholder="订单编号、货号或颜色"></label></div><div class="order-preservation-note" id="resultOrderNote"></div><div id="resultTable" class="result-table"></div><div class="pagination"><span id="pageSummary"></span><div><button class="btn" id="prevPage">上一页</button><span id="pageIndex"></span><button class="btn" id="nextPage">下一页</button></div></div></div>
+      <p class="result-footnote" id="resultFootnote"></p>
+    </div>
+    <div class="bottom-bar"><button class="btn" id="backOrders">返回修改采购单</button><span>重复匹配始终使用本次原始出货数量，不重复扣减。</span><button class="quiet" id="newBatch">开始新一批</button></div>
+  </section>
+  <section id="step4" class="step-panel" hidden>
+    <div class="work-surface packing-surface">
+      <div class="packing-inputs">
+        <div>
+          <h2 id="packingFileLabel">领星装箱表 · 每箱多款 SKU</h2>
+          <button id="packingDrop" class="packing-drop" type="button" aria-describedby="packingFileLabel packingFileName">
+            <strong>选择或拖入 Excel 文件</strong><span>支持 .xlsx</span>
+          </button>
+          <input id="packingFile" type="file" accept=".xlsx" hidden>
+          <p id="packingFileName" class="packing-file" aria-live="polite"></p>
+        </div>
+        <div class="packing-capacity">
+          <label for="packingCapacity">单箱最多装几双</label>
+          <input id="packingCapacity" type="number" min="1" step="1" value="20" inputmode="numeric">
+        </div>
+      </div>
+      <div class="stats packing-stats" aria-label="装箱汇总">
+        <div><span>发货总数</span><strong id="packingTotal">—</strong><small>双</small></div>
+        <div><span>需要箱数</span><strong id="packingBoxes">—</strong><small>箱</small></div>
+        <div><span>装满的箱数</span><strong id="packingFull">—</strong><small>箱</small></div>
+        <div><span>最后一箱</span><strong id="packingLast">—</strong><small>双</small></div>
+      </div>
+      <div class="packing-actions">
+        <button id="packingExport" class="btn primary" disabled>下载领星装箱表</button>
+        <button id="packingFactory" class="btn primary-light" disabled>下载工厂装箱单</button>
+        <button id="packingReset" class="btn">重置</button>
+      </div>
+      <p id="packingStatus" class="packing-status" role="status" hidden></p>
+    </div>
+  </section>
+  </div>
+</main></div>
+<dialog id="pasteDialog"><form method="dialog"><div class="dialog-head"><h2 id="pasteTitle">粘贴出货内容</h2><button class="close-btn" aria-label="关闭">×</button></div></form><p id="pasteHint"></p><div class="paste-template" id="pasteTemplate"></div><textarea id="pasteText" aria-label="出货粘贴区" spellcheck="false" placeholder="点击这里，按 Ctrl + V 粘贴从 Excel / WPS 复制的区域"></textarea><div class="dialog-actions"><button class="btn" id="cancelPaste">取消</button><button class="btn primary" id="applyPaste">识别并填入</button></div><div class="messages" id="pasteError" role="alert"></div></dialog>
+<dialog id="ordersPasteDialog"><form method="dialog"><div class="dialog-head"><h2>粘贴采购订单</h2><button class="close-btn" aria-label="关闭">×</button></div></form><p>按原表顺序复制前两列，可包含一行表头。填入后替换当前采购数据，中间空行保留。</p><div class="paste-template">A列：订单编号　｜　B列：采购货号</div><textarea id="ordersPasteText" aria-label="采购订单粘贴区" spellcheck="false" placeholder="点击这里，按 Ctrl + V 粘贴两列采购单"></textarea><div class="dialog-actions"><button class="btn" id="cancelOrdersPaste">取消</button><button class="btn primary" id="applyOrdersPaste">按原顺序填入</button></div><div class="messages" id="ordersPasteError" role="alert"></div></dialog>
+<dialog id="colsDialog"><form method="dialog"><div class="dialog-head"><h2>调整尺码列</h2><button class="close-btn" aria-label="关闭">×</button></div></form><p>左右移动或拖动尺码，数量会随列一起移动。货号、颜色固定在前两列。</p><div class="column-list" id="columnList"></div><div class="add-column"><label for="newSize">添加尺码</label><input id="newSize" placeholder="例如 13 或 13.5" inputmode="decimal"><button class="btn primary-light" id="addSize">添加列</button></div><div id="colsMessage" class="messages" aria-live="polite"></div><div class="dialog-actions"><button class="quiet" id="resetSizes">恢复默认顺序</button><button class="btn primary" id="doneCols">完成</button></div></dialog>
+<dialog id="sheetDialog"><h2>选择工作表</h2><p id="sheetFileName"></p><label for="sheetSelect">要导入的工作表</label><select id="sheetSelect"></select><div class="dialog-actions"><button class="btn" id="cancelSheet">取消</button><button class="btn primary" id="applySheet">导入此工作表</button></div></dialog>
+<dialog id="helpDialog"><form method="dialog"><div class="dialog-head"><h2>三步完成每日出货匹配</h2><button class="close-btn" aria-label="关闭">×</button></div></form><ol class="help-list"><li><strong>粘贴出货数量</strong><p>按固定表头复制数据行，直接粘贴到表格或点击“粘贴出货内容”，行数自动增加。最后一列显示每行合计，表底显示各尺码汇总及所有行的总数量。</p></li><li><strong>粘贴采购订单</strong><p>A列订单编号，B列完整货号，表格内可直接编辑。预览、匹配、复制、导出均按录入顺序，中间空行保留。每行视为一双，同货号优先匹配靠前的行。</p></li><li><strong>核对后导出</strong><p>C列默认填北京时间的今日日期，例如 2026/11/02，未匹配行保持空白；也可切换出货总数或每行填1。采购结果、出货余额均可单独复制或导出，包含表头。按原序复制全部 C 列不受筛选影响，含表头，请粘贴到原表 C 列表头位置。</p></li></ol><p class="help-note">文件支持 .xls / .xlsx / .xlsm / .csv。读取宏工作簿时只读取数据，不执行宏。相同货号的出货会合并；空白与 0 不出货，负数或非整数会提示修正。超长订单编号请使用文本格式。</p><button id="closeHelp" class="btn primary">开始使用</button></dialog>
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+<script>/* XLSX_LIBRARY */</script>
+<script>/* PACKING_LIBRARY */</script>
+<script>/* CORE_JS */</script>
+<script>/* APP_JS */</script>
+<script>/* PACKING_JS */</script>
+</body></html>
