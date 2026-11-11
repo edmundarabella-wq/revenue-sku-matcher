@@ -2,7 +2,9 @@
   'use strict';
   const C=ShippingCore, $=id=>document.getElementById(id), text=(el,s)=>el.textContent=s;
   const el=(tag,cls,value)=>{const e=document.createElement(tag);if(cls)e.className=cls;if(value!==undefined)e.textContent=value;return e;};
-  const state={sizes:[...C.DEFAULT_SIZES],grid:[],orderGrid:Array.from({length:8},()=>['','']),mode:'fixed',supply:null,orders:null,result:null,orderImportWarnings:[],importWarnings:[],view:'orders',filter:'all',page:0,gridPage:0,orderGridPage:0,orderPreviewPage:0,step:1};
+  const orderColumns=['订单编号','商品中文名称','出货日期'];
+  const emptyOrderRow=()=>orderColumns.map(()=>'');
+  const state={sizes:[...C.DEFAULT_SIZES],grid:[],orderGrid:Array.from({length:8},emptyOrderRow),mode:'fixed',supply:null,orders:null,result:null,orderImportWarnings:[],importWarnings:[],view:'orders',filter:'all',page:0,gridPage:0,orderGridPage:0,orderPreviewPage:0,step:1};
   try{const saved=JSON.parse(localStorage.getItem('shipping-template-v1'));if(Array.isArray(saved)&&saved.length&&saved.length<=60&&saved.every(s=>/^\d+(\.\d+)?$/.test(s))&&new Set(saved.map(C.numericSize)).size===saved.length)state.sizes=saved.map(C.numericSize);}catch{}
   function saveSizes(){try{localStorage.setItem('shipping-template-v1',JSON.stringify(state.sizes));}catch{}}
   const emptyRow=()=>Array(state.sizes.length+2).fill('');
@@ -83,54 +85,126 @@
   op.onclick=()=>{state.orderGridPage--;renderOrdersGrid();};on.onclick=()=>{state.orderGridPage++;renderOrdersGrid();};
   function renderOrdersGrid(){
     const pages=Math.max(1,Math.ceil(state.orderGrid.length/50));state.orderGridPage=Math.max(0,Math.min(pages-1,state.orderGridPage));orderPager.hidden=pages===1;text(ol,(state.orderGridPage+1)+' / '+pages);op.disabled=state.orderGridPage===0;on.disabled=state.orderGridPage===pages-1;
-    const t=$('ordersGrid');t.replaceChildren();const head=el('thead'),hr=el('tr');['原始行序','A列 · 订单编号','B列 · 采购货号'].forEach(h=>hr.append(el('th','',h)));head.append(hr);t.append(head);const body=el('tbody');
+    const t=$('ordersGrid');t.replaceChildren();const head=el('thead'),hr=el('tr');['原始行序',...orderColumns.map((name,col)=>'ABC'[col]+'列 · '+name)].forEach(h=>hr.append(el('th','',h)));head.append(hr);t.append(head);const body=el('tbody');
     state.orderGrid.slice(state.orderGridPage*50,state.orderGridPage*50+50).forEach((row,j)=>{const ri=state.orderGridPage*50+j,tr=el('tr');tr.append(el('td','',ri+1));
-      for(let col=0;col<2;col++){const td=el('td'),input=el('input');input.value=row[col]??'';input.dataset.row=ri;input.dataset.col=col;input.setAttribute('aria-label','采购第 '+(ri+1)+' 行 '+(col===0?'订单编号':'采购货号'));input.addEventListener('input',()=>{state.orderGrid[ri][col]=input.value;invalidate();clearTimeout(orderTimer);orderTimer=setTimeout(updateOrders,180);});td.append(input);tr.append(td);}body.append(tr);
+      orderColumns.forEach((name,col)=>{const td=el('td'),input=el('input');input.value=row[col]??'';input.dataset.row=ri;input.dataset.col=col;input.setAttribute('aria-label','采购第 '+(ri+1)+' 行 '+name);input.addEventListener('input',()=>{state.orderGrid[ri][col]=input.value;invalidate();clearTimeout(orderTimer);orderTimer=setTimeout(updateOrders,180);});td.append(input);tr.append(td);});body.append(tr);
     });t.append(body);
   }
   function renderOrderPreview(){const records=state.orders?.records||[],pages=Math.max(1,Math.ceil(records.length/50));state.orderPreviewPage=Math.max(0,Math.min(pages-1,state.orderPreviewPage));$('ordersPreview').replaceChildren();
-    if(records.length){const data=records.slice(state.orderPreviewPage*50,state.orderPreviewPage*50+50).map(r=>[r.sourceRow,r.id,r.sku]);$('ordersPreview').append(table(['原始行序','订单编号','采购货号'],data));}else $('ordersPreview').append(el('div','empty-inline','请在表格内粘贴订单编号与采购货号两列。'));
+    if(records.length){const data=records.slice(state.orderPreviewPage*50,state.orderPreviewPage*50+50).map(r=>[r.sourceRow,r.id,r.sku,r.shipDate]);$('ordersPreview').append(table(['原始行序',...orderColumns],data));}else $('ordersPreview').append(el('div','empty-inline','尚无采购订单'));
     $('ordersPreviewPager').hidden=!records.length;text($('ordersPreviewSummary'),'共 '+records.length+' 个原始行位，顺序与录入一致');text($('ordersPreviewPage'),(state.orderPreviewPage+1)+' / '+pages);$('ordersPreviewPrev').disabled=state.orderPreviewPage===0;$('ordersPreviewNext').disabled=state.orderPreviewPage>=pages-1;
   }
   $('ordersPreviewPrev').onclick=()=>{state.orderPreviewPage--;renderOrderPreview();};$('ordersPreviewNext').onclick=()=>{state.orderPreviewPage++;renderOrderPreview();};
   function setOrderRows(rows){
     const data=C.orderDataRows(rows);if(data.length>20000)throw Error('最多支持 20,000 行，请分批处理。');
-    state.orderImportWarnings=data.some(r=>r.slice(2).some(C.str))?['只使用前两列，原 C 列及之后的内容不参与匹配。']:[];
-    state.orderGrid=data.map(r=>r.slice(0,2));while(state.orderGrid.length<8)state.orderGrid.push(['','']);
+    state.orderImportWarnings=data.some(r=>r.slice(3).some(C.str))?['只使用前三列，D 列及之后的内容未导入。']:[];
+    state.orderGrid=data.map(r=>orderColumns.map((_,col)=>r[col]??''));while(state.orderGrid.length<8)state.orderGrid.push(emptyOrderRow());
     state.orderGridPage=0;state.orderPreviewPage=0;renderOrdersGrid();updateOrders();
   }
-  $('ordersGrid').addEventListener('paste',e=>{const input=e.target.closest('input');if(!input)return;const raw=e.clipboardData.getData('text/plain');if(!raw.includes('\t')&&!raw.includes('\n'))return;e.preventDefault();
+  $('ordersGrid').addEventListener('paste',e=>{const input=e.target.closest('input');if(!input)return;const raw=e.clipboardData.getData('text/plain');if(!/[\t\r\n]/.test(raw))return;e.preventDefault();
     try{let rows=C.parseText(raw);const start=Number(input.dataset.row),col=Number(input.dataset.col);if(start===0&&col===0&&rows.length&&C.isOrderHeader(rows[0]))rows=rows.slice(1);
-      if(!rows.length)return;if(rows.some(r=>r.length+col>2))throw Error('采购表只接收订单编号、采购货号两列，请仅复制这两列。');if(start+rows.length>20000)throw Error('最多支持 20,000 行，请分批处理。');
-      while(state.orderGrid.length<start+rows.length)state.orderGrid.push(['','']);rows.forEach((r,i)=>r.forEach((v,j)=>state.orderGrid[start+i][col+j]=v));state.orderImportWarnings=[];state.orderPreviewPage=0;renderOrdersGrid();updateOrders();toast('已按原顺序填入 '+rows.length+' 行，空行保留');
+      if(!rows.length)return;const width=rows.reduce((max,r)=>Math.max(max,r.length),0);
+      if(width+col>orderColumns.length)throw Error('粘贴区域超出采购表的 A 至 C 列。');if(start+rows.length>20000)throw Error('最多支持 20,000 行，请分批处理。');
+      while(state.orderGrid.length<start+rows.length)state.orderGrid.push(emptyOrderRow());
+      rows.forEach((r,i)=>{for(let j=0;j<width;j++)state.orderGrid[start+i][col+j]=r[j]??'';});
+      state.orderImportWarnings=[];state.orderPreviewPage=0;renderOrdersGrid();updateOrders();toast('已按原顺序填入 '+rows.length+' 行，空行保留');
     }catch(err){toast(err.message);}
   });
-  $('ordersGrid').addEventListener('keydown',e=>{const input=e.target.closest('input');if(!input||e.key!=='Enter')return;e.preventDefault();const row=Number(input.dataset.row)+1,col=Number(input.dataset.col);if(row>=20000)return;if(row>=state.orderGrid.length)state.orderGrid.push(['','']);state.orderGridPage=Math.floor(row/50);renderOrdersGrid();$('ordersGrid').querySelector('input[data-row="'+row+'"][data-col="'+col+'"]').focus();});
+  $('ordersGrid').addEventListener('keydown',e=>{const input=e.target.closest('input');if(!input||e.key!=='Enter')return;e.preventDefault();const row=Number(input.dataset.row)+1,col=Number(input.dataset.col);if(row>=20000)return;if(row>=state.orderGrid.length)state.orderGrid.push(emptyOrderRow());state.orderGridPage=Math.floor(row/50);renderOrdersGrid();$('ordersGrid').querySelector('input[data-row="'+row+'"][data-col="'+col+'"]').focus();});
   $('readOrders').onclick=updateOrders;$('clearOrders').onclick=()=>{if(state.orderGrid.some(r=>r.some(C.str))&&!confirm('清空本次采购订单？'))return;setOrderRows([]);};
   $('focusOrders').onclick=()=>{$('ordersPasteText').value='';$('ordersPasteError').replaceChildren();$('ordersPasteDialog').showModal();$('ordersPasteText').focus();};
   $('cancelOrdersPaste').onclick=()=>$('ordersPasteDialog').close();$('applyOrdersPaste').onclick=()=>{try{const rows=C.parseText($('ordersPasteText').value);if(!rows.length)throw Error('请先粘贴采购订单。');setOrderRows(rows);$('ordersPasteDialog').close();toast('已按原顺序填入采购订单，请核对预览');}catch(e){message($('ordersPasteError'),[e.message]);}};
   function updateRunButton(){$('runMatch').disabled=!(state.supply?.records.length&&!state.supply.errors.length&&state.orders?.count>0&&!state.orders.errors.length);}
   $('nextOrders').onclick=()=>{updateSupply();if(!state.supply.errors.length&&state.supply.records.length)goto(2);};$('backSupply').onclick=()=>goto(1);$('backOrders').onclick=()=>goto(2);$('goSupply').onclick=()=>goto(1);$('returnMode').onchange=invalidate;
-  function returnDescription(r){return r.mode==='date'?'C 列匹配成功填 '+r.matchDate+'（北京时间的今日日期），未匹配或原始空行保持空白。':r.mode==='total'?'C 列回填该货号的原出货总数，沿用原宏。C 列不可相加作为分配总数；实际分配量见导出的“实际分配双数”列。':'C 列每条已匹配订单填写 1；未匹配行保持空白。';}
-  $('runMatch').onclick=()=>{updateSupply();updateOrders();updateDateLabel();if($('runMatch').disabled)return;try{state.result=C.match(state.supply.records,state.orders.records,$('returnMode').value);state.page=0;state.filter='all';state.view='orders';$('search').value='';$('resultBody').hidden=false;$('resultEmpty').hidden=true;$('exportAll').disabled=false;const r=state.result;text($('statTotal'),r.total);text($('statMatched'),r.matched);text($('statLeft'),r.left);text($('statUnmatched'),r.unmatched);text($('reconcile'),'数量已核对：'+r.total+' 双出货 = '+r.matched+' 双已分配 + '+r.left+' 双剩余');text($('navResult'),'已匹配 '+r.matched+' 行订单');text($('resultSubtitle'),'保持采购单原始行序，每条匹配订单占用 1 双出货。');text($('resultFootnote'),returnDescription(r));renderResult();goto(3);}catch(e){toast(e.message);}};
-  function filtered(){if(!state.result)return[];const q=$('search').value.trim().toLowerCase();return (state.view==='orders'?state.result.rows:state.result.inventory).filter(r=>(state.view!=='orders'||state.filter==='all'||(!r.empty&&(state.filter==='matched'?r.matched:!r.matched)))&&(!q||(String(r.id||'')+' '+r.sku).toLowerCase().includes(q)));}
-  function renderResult(){if(!state.result)return;const ordersView=state.view==='orders';$('viewOrders').classList.toggle('selected',ordersView);$('viewInventory').classList.toggle('selected',!ordersView);$('orderFilters').hidden=!ordersView;$('copyAllC').hidden=!ordersView;text($('exportCurrent'),ordersView?'导出采购结果':'导出出货余额');document.querySelectorAll('[data-filter]').forEach(b=>b.classList.toggle('selected',b.dataset.filter===state.filter));const rows=filtered(),pages=Math.max(1,Math.ceil(rows.length/50));state.page=Math.min(state.page,pages-1);const selected=rows.slice(state.page*50,state.page*50+50);let data,headers;if(ordersView){headers=['订单编号','采购货号','C列回填值','匹配状态'];data=selected.map(r=>[r.id,r.sku,r.value,r.empty?'':el('span','badge'+(r.matched?'':' pending'),r.status)]);}else{headers=['货号','原出货数量','已分配双数','剩余数量'];data=selected.map(r=>[r.sku,r.total,r.allocated,r.left]);}$('resultTable').replaceChildren(table(headers,data));if(!rows.length)$('resultTable').append(el('div','empty-inline','没有符合条件的记录。'));text($('resultOrderNote'),ordersView?(state.filter==='all'&&!$('search').value.trim()?'原始顺序已保留。回填原表 C 列，可使用“按原序复制全部 C 列”，含表头和空行。':'当前为筛选结果，复制和当前表格导出包含筛选内全部行；“按原序复制全部 C 列”始终保留完整原序。'):'复制或导出均包含表头及当前搜索范围内的全部货号。');text($('pageSummary'),'共 '+rows.length+' 条'+(rows.length?'，显示 '+(state.page*50+1)+'–'+Math.min((state.page+1)*50,rows.length)+' 条':''));text($('pageIndex'),(state.page+1)+' / '+pages);$('prevPage').disabled=state.page===0;$('nextPage').disabled=state.page>=pages-1;}
+  function returnDescription(r){
+    const newValue=r.mode==='date'?'今日日期 '+r.matchDate+'（北京时间）':r.mode==='total'?'该货号的原出货总数，不作为实际分配量':'1';
+    return 'C 列已有值保留，不分配出货；新匹配的空白 C 列填写 '+newValue+'。未匹配行和空行保持空白。';
+  }
+  $('runMatch').onclick=()=>{
+    updateSupply();updateOrders();updateDateLabel();if($('runMatch').disabled)return;
+    try{
+      const r=state.result=C.match(state.supply.records,state.orders.records,$('returnMode').value);
+      state.page=0;state.filter='all';state.view='orders';$('search').value='';$('resultBody').hidden=false;$('resultEmpty').hidden=true;$('exportAll').disabled=false;
+      text($('statTotal'),r.total);text($('statMatched'),r.matched);text($('statLeft'),r.left);text($('statUnmatched'),r.unmatched);
+      text($('reconcile'),'数量已核对：'+r.total+' 双出货 = '+r.matched+' 双已分配 + '+r.left+' 双剩余'+(r.skipped?'；已有出货值，跳过 '+r.skipped+' 行':''));
+      text($('navResult'),'已匹配 '+r.matched+' 行订单');
+      text($('resultSubtitle'),'新匹配 '+r.matched+' 行'+(r.skipped?' · 保留 '+r.skipped+' 行已有出货值':''));
+      text($('resultFootnote'),returnDescription(r));renderResult();goto(3);
+    }catch(e){toast(e.message);}
+  };
+  function filtered(){if(!state.result)return[];const q=$('search').value.trim().toLowerCase();return (state.view==='orders'?state.result.rows:state.result.inventory).filter(r=>(state.view!=='orders'||state.filter==='all'||(!r.empty&&!r.skipped&&(state.filter==='matched'?r.matched:!r.matched)))&&(!q||(String(r.id||'')+' '+r.sku).toLowerCase().includes(q)));}
+  function renderResult(){
+    if(!state.result)return;
+    const ordersView=state.view==='orders';
+    $('viewOrders').classList.toggle('selected',ordersView);$('viewInventory').classList.toggle('selected',!ordersView);$('orderFilters').hidden=!ordersView;$('copyAllC').hidden=!ordersView;
+    text($('copyAllC'),state.result.mode==='date'?'复制全部出货日期':'复制全部 C 列');text($('exportCurrent'),ordersView?'导出采购结果':'导出出货余额');
+    document.querySelectorAll('[data-filter]').forEach(b=>b.classList.toggle('selected',b.dataset.filter===state.filter));
+    const rows=filtered(),pages=Math.max(1,Math.ceil(rows.length/50));state.page=Math.min(state.page,pages-1);
+    const selected=rows.slice(state.page*50,state.page*50+50);
+    const headers=ordersView?resultOrderHeaders():['货号','原出货数量','已分配双数','剩余数量'];
+    const data=ordersView?selected.map(r=>[r.id,r.sku,r.value,r.empty?'':el('span','badge'+(r.skipped?' skipped':r.matched?'':' pending'),r.status)]):selected.map(r=>[r.sku,r.total,r.allocated,r.left]);
+    $('resultTable').replaceChildren(table(headers,data));if(!rows.length)$('resultTable').append(el('div','empty-inline','没有符合条件的记录。'));
+    $('resultOrderNote').hidden=!ordersView;
+    text($('resultOrderNote'),'复制全部 C 列保留原始顺序和空行，不含表头；从原表 C 列首条数据粘贴。');
+    text($('pageSummary'),'共 '+rows.length+' 条'+(rows.length?'，显示 '+(state.page*50+1)+'–'+Math.min((state.page+1)*50,rows.length)+' 条':''));
+    text($('pageIndex'),(state.page+1)+' / '+pages);$('prevPage').disabled=state.page===0;$('nextPage').disabled=state.page>=pages-1;
+  }
   $('viewOrders').onclick=()=>{state.view='orders';state.page=0;renderResult();};$('viewInventory').onclick=()=>{state.view='inventory';state.page=0;renderResult();};document.querySelectorAll('[data-filter]').forEach(b=>b.onclick=()=>{state.filter=b.dataset.filter;state.page=0;renderResult();});$('search').oninput=()=>{state.page=0;renderResult();};$('prevPage').onclick=()=>{state.page--;renderResult();};$('nextPage').onclick=()=>{state.page++;renderResult();};
   const cellString=s=>({t:'s',v:String(s??'')});
   function makeWorkbook(parts){const wb=XLSX.utils.book_new();parts.forEach(({name,headers,rows,widths})=>{const ws=XLSX.utils.aoa_to_sheet([headers,...rows.map(row=>row.map(v=>typeof v==='number'?v:cellString(v)))]);ws['!cols']=(widths||headers.map(()=>22)).map(w=>({wch:w}));ws['!autofilter']={ref:ws['!ref']};XLSX.utils.book_append_sheet(wb,ws,name);});return wb;}
   function exportParts(parts,name){try{const wb=makeWorkbook(parts),data=XLSX.write(wb,{type:'array',bookType:'xlsx'});const url=URL.createObjectURL(new Blob([data],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));const a=el('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),30000);toast('已生成文件，请查看浏览器下载记录');}catch(e){toast('导出失败：'+e.message);}}
   function dateStamp(){return C.today().replaceAll('/','-');}
   $('exportSupply').onclick=()=>{updateSupply();if(!state.supply.records.length||state.supply.errors.length)return;exportParts([{name:'转换明细',headers:['货号','数量'],rows:state.supply.records.map(r=>[r.sku,r.qty]),widths:[38,14]}],'出货转换明细_'+dateStamp()+'.xlsx');};
-  function orderPart(rows,full=false){return {name:'采购匹配结果',headers:['订单编号','采购货号','回填值','匹配状态',...(full?['实际分配双数']:[])],rows:rows.map(o=>[o.id,o.sku,o.value,o.status,...(full?[o.empty?'':o.matched?1:0]:[])]),widths:[25,38,18,24,...(full?[18]:[])]};}
+  function resultOrderHeaders(){return [...orderColumns.slice(0,2),state.result.mode==='date'?'出货日期':'C列回填值','匹配状态'];}
+  function orderPart(rows,full=false){return {name:'采购匹配结果',headers:[...resultOrderHeaders(),...(full?['实际分配双数']:[])],rows:rows.map(o=>[o.id,o.sku,o.value,o.status,...(full?[o.empty?'':o.matched?1:0]:[])]),widths:[25,38,18,24,...(full?[18]:[])]};}
   function inventoryPart(rows){return {name:'出货余额',headers:['货号','原出货数量','已分配双数','剩余数量'],rows:rows.map(o=>[o.sku,o.total,o.allocated,o.left]),widths:[38,16,16,16]};}
   $('exportCurrent').onclick=()=>{if(!state.result)return;const part=state.view==='orders'?orderPart(filtered()):inventoryPart(filtered());exportParts([part],part.name+'_'+dateStamp()+'.xlsx');};
   $('exportAll').onclick=()=>{const r=state.result;if(!r)return;exportParts([orderPart(r.rows,true),inventoryPart(r.inventory),{name:'转换明细',headers:['货号','数量'],rows:state.supply.records.map(o=>[o.sku,o.qty]),widths:[38,14]},{name:'处理说明',headers:['项目','说明'],rows:[['匹配时间',new Date().toLocaleString('zh-CN',{timeZone:'Asia/Shanghai'})],['分配规则','每行采购单按一双，按原始行序匹配；原始空行占位保留；重复出货货号数量合并。'],['C列回填',returnDescription(r)],['数量核对',r.total+' = '+r.matched+' + '+r.left],['订单数量',r.orderCount],['含空行的原始行数',r.rows.length],['未匹配订单',r.unmatched]],widths:[22,88]}],'出货匹配结果_'+dateStamp()+'.xlsx');};
-  async function copyData(data,success){const value=data.map(row=>row.map(v=>{const s=String(v??'');return /[\t\n\r"]/.test(s)?'"'+s.replaceAll('"','""')+'"':s;}).join('\t')).join('\n');try{if(navigator.clipboard?.writeText)await navigator.clipboard.writeText(value);else throw Error();toast(success);}catch{const ta=el('textarea');ta.value=value;ta.style.position='fixed';ta.style.top='-9999px';document.body.append(ta);ta.select();const ok=document.execCommand('copy');ta.remove();toast(ok?success:'浏览器不允许复制，请使用导出表格。');}}
+  async function copyData(data,success,columnOnly=false){
+    const value=data.map(row=>row.map(v=>{const s=String(v??'');return /[\t\n\r"]/.test(s)?'"'+s.replaceAll('"','""')+'"':s;}).join('\t')).join('\n');
+    if(columnOnly&&navigator.clipboard?.write&&typeof ClipboardItem==='function'){
+      // A table carries explicit empty rows, including at the end of column C.
+      const column=el('table'),body=column.createTBody();
+      for(const [v] of data)body.insertRow().insertCell().textContent=String(v??'');
+      try{
+        await navigator.clipboard.write([new ClipboardItem({'text/plain':new Blob([value],{type:'text/plain'}),'text/html':new Blob([column.outerHTML],{type:'text/html'})})]);
+        toast(success);return;
+      }catch{}
+    }
+    try{await navigator.clipboard.writeText(value);toast(success);}
+    catch{
+      const ta=el('textarea');ta.value=value;ta.style.position='fixed';ta.style.top='-9999px';document.body.append(ta);ta.select();
+      let ok=false;try{ok=document.execCommand('copy');}catch{}finally{ta.remove();}
+      toast(ok?success:'浏览器不允许复制，请使用导出表格。');
+    }
+  }
   $('copyResult').onclick=()=>{if(!state.result)return;const part=state.view==='orders'?orderPart(filtered()):inventoryPart(filtered());copyData([part.headers,...part.rows],'已复制 '+part.rows.length+' 条记录，包含表头，保持原始顺序');};
-  $('copyAllC').onclick=()=>{if(!state.result)return;copyData([['回填值'],...state.result.rows.map(r=>[r.value])],'已按原序复制全部 C 列（含表头和空行），请粘贴到原表 C 列表头位置');};
+  $('copyAllC').onclick=()=>{if(!state.result)return;copyData(state.result.rows.map(r=>[r.value]),'已按原序复制全部 C 列，不含表头',true);};
   let pendingWorkbook=null,pendingType=null;
   async function loadFile(file,type){if(!file)return;if(file.size>30*1024*1024)return toast('文件超过 30MB，请精简后导入。');toast('正在读取 '+file.name+'…');try{const bytes=await file.arrayBuffer();const wb=XLSX.read(bytes,{type:'array',raw:true,cellFormula:false,cellHTML:false,bookVBA:false});if(!wb.SheetNames.length)throw Error('文件中没有工作表。');pendingWorkbook=wb;pendingType=type;if(wb.SheetNames.length>1){text($('sheetFileName'),file.name);$('sheetSelect').replaceChildren(...wb.SheetNames.map(n=>{const o=el('option','',n);o.value=n;return o;}));$('sheetDialog').showModal();}else importSheet(wb.SheetNames[0]);}catch(e){toast('读取失败：'+e.message);}}
-  function importSheet(name){try{const ws=pendingWorkbook.Sheets[name];const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:true,blankrows:pendingType==='orders'});while(rows.length&&rows.at(-1).every(v=>!C.str(v)))rows.pop();if(rows.length>20001)throw Error('工作表超过 20,000 行，请分批处理。');if(pendingType==='supply'){const imp=C.importSupplier(rows,state.sizes);if(imp.mode==='detail'){$('detailText').value=imp.rows.map(r=>r.slice(0,2).join('\t')).join('\n');setMode('detail');}else{state.sizes=imp.sizes;state.grid=imp.rows.length?imp.rows:Array.from({length:8},emptyRow);state.gridPage=0;saveSizes();setMode('fixed');renderGrid();}state.importWarnings=imp.warnings;updateSupply();goto(1);}else{setOrderRows(rows);goto(2);}pendingWorkbook=null;pendingType=null;$('sheetDialog').close();toast('已导入 '+name+'，请核对预览');}catch(e){toast('导入失败：'+e.message);}}
+  function importSheet(name){
+    try{
+      const ws=pendingWorkbook.Sheets[name],orders=pendingType==='orders';
+      const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:true,blankrows:orders});
+      if(orders&&ws['!ref']){
+        const start=XLSX.utils.decode_range(ws['!ref']).s;
+        rows.forEach((row,i)=>{
+          const cell=ws[XLSX.utils.encode_cell({r:start.r+i,c:start.c+2})];
+          if(cell?.t==='n'&&cell.w)row[2]=cell.w;
+        });
+      }
+      if(!orders)while(rows.length&&rows.at(-1).every(v=>!C.str(v)))rows.pop();
+      if(rows.length>20001)throw Error('工作表超过 20,000 行，请分批处理。');
+      if(orders){setOrderRows(rows);goto(2);}
+      else{
+        const imp=C.importSupplier(rows,state.sizes);
+        if(imp.mode==='detail'){$('detailText').value=imp.rows.map(r=>r.slice(0,2).join('\t')).join('\n');setMode('detail');}
+        else{state.sizes=imp.sizes;state.grid=imp.rows.length?imp.rows:Array.from({length:8},emptyRow);state.gridPage=0;saveSizes();setMode('fixed');renderGrid();}
+        state.importWarnings=imp.warnings;updateSupply();goto(1);
+      }
+      pendingWorkbook=null;pendingType=null;$('sheetDialog').close();toast('已导入 '+name+'，请核对预览');
+    }catch(e){toast('导入失败：'+e.message);}
+  }
   $('supplyFileBtn').onclick=()=>$('supplyFile').click();$('ordersFileBtn').onclick=()=>$('ordersFile').click();$('supplyFile').onchange=e=>{loadFile(e.target.files[0],'supply');e.target.value='';};$('ordersFile').onchange=e=>{loadFile(e.target.files[0],'orders');e.target.value='';};$('applySheet').onclick=()=>importSheet($('sheetSelect').value);$('cancelSheet').onclick=()=>{pendingWorkbook=null;pendingType=null;$('sheetDialog').close();};
   function loadDemo(){if((state.supply?.records.length||state.orders?.count)&&!confirm('示例将替换本次出货与采购数据，是否继续？'))return;state.sizes=[...C.DEFAULT_SIZES];const row=(model,color,values)=>[model,color,...state.sizes.map(s=>values[s]??'')];state.grid=[row('DEMO1','黑色',{'8.5':1}),row('DEMO1','米色',{'7':2}),row('DEMO2','红色',{'7':4,'8':3,'8.5':2})];while(state.grid.length<8)state.grid.push(emptyRow());state.gridPage=0;setMode('fixed');renderGrid();setOrderRows(['DEMO1-黑色-8.5','DEMO1-米色-7','DEMO1-米色-7','DEMO1-米色-7','DEMO2-红色-7','DEMO2-红色-7','DEMO2-蓝色-9.5'].map((sku,i)=>['DEMO-ORDER-'+(i+1),sku]));goto(1);toast('已载入演示数据');}
   $('demoBtn').onclick=loadDemo;$('helpBtn').onclick=()=>$('helpDialog').showModal();$('closeHelp').onclick=()=>$('helpDialog').close();

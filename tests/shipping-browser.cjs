@@ -6,6 +6,7 @@ const { chromium } = require('playwright');
 const XLSX = require('../vendor/shipping/xlsx.full.min.js');
 const artifacts = path.join(__dirname, 'artifacts');
 const target = process.env.TOOLBOX_TEST_URL || pathToFileURL(path.join(__dirname, '../docs/index.html')).href;
+const web = /^https?:/.test(target);
 const browserOptions = process.env.TOOL_BROWSER_EXECUTABLE ? { executablePath: process.env.TOOL_BROWSER_EXECUTABLE } : {};
 
 function file(name, sheets) {
@@ -24,7 +25,7 @@ async function download(page, button) {
   fs.mkdirSync(artifacts, { recursive: true });
   const browser = await chromium.launch({ headless: true, ...browserOptions });
   const context = await browser.newContext({ viewport: { width: 1440, height: 950 }, acceptDownloads: true });
-  if (target.startsWith('https:')) await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: new URL(target).origin });
+  if (web) await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: new URL(target).origin });
   const page = await context.newPage(), requests = [], errors = [];
   page.on('request', request => { if (/^https?:/.test(request.url()) && !(request.method() === 'GET' && request.url() === target)) requests.push(request.url()); });
   page.on('pageerror', error => errors.push(error.message));
@@ -71,25 +72,57 @@ async function download(page, button) {
     await get('applySheet').click();
     await get('nextOrders').click();
     const longId = '0'.repeat(6) + '123456789012';
+    const orderHeader = ['订单编号','商品中文名称','出货日期'];
+    const existingDate = '2026/11/10';
+    const serial = 46336;
+    await get('ordersFile').setInputFiles(file('orders-demo.xlsx', [['采购', [orderHeader,['DEMO-XLSX','DEMO-X',{t:'n',v:serial,z:'yyyy/mm/dd'}]]]]));
+    const firstDate = get('ordersGrid').locator('input[data-row="0"][data-col="2"]');
+    await frame.getByText(/已导入 采购/).waitFor();
+    assert.equal(await firstDate.inputValue(), XLSX.SSF.format('yyyy/mm/dd', serial));
+    await get('ordersGrid').locator('input[data-row="0"][data-col="0"]').evaluate((input, header) => {
+      const data = new DataTransfer();
+      data.setData('text/plain', [header, ['DEMO-GRID','DEMO-X','2026-10-09'], ['DEMO-NEXT','DEMO-X','']].map(r=>r.join('\t')).join('\r\n'));
+      input.dispatchEvent(new ClipboardEvent('paste', {bubbles:true,cancelable:true,clipboardData:data}));
+    }, orderHeader);
+    assert.equal(await firstDate.inputValue(), '2026-10-09');
+    assert.equal(await get('ordersGrid').locator('input[data-row="1"][data-col="2"]').inputValue(), '');
     await get('focusOrders').click();
-    await get('ordersPasteText').fill(['订单编号\t采购货号', longId+'\tDEMO-X', '\t', 'DEMO-2\tDEMO-X', 'DEMO-3\tDEMO-X'].join('\n'));
+    const history = Array.from({length:48},(_,i)=>['DEMO-HISTORY-'+i,'DEMO-X','2026-10-09']);
+    const purchase = [['DEMO-OLD_1','DEMO-X',existingDate],[longId,'DEMO-X',''],['','',''],['DEMO-2','DEMO-X',''],...history,['DEMO-3','DEMO-X','']];
+    await get('ordersPasteText').fill([orderHeader,...purchase].map(r=>r.join('\t')).join('\n'));
     await get('applyOrdersPaste').click();
+    assert.equal(await firstDate.inputValue(), existingDate);
+    await page.screenshot({path:path.join(artifacts,'shipping-order-dates.png')});
     await get('runMatch').click();
     await get('resultBody').waitFor();
     assert.equal(await get('statTotal').textContent(), '3');
     assert.equal(await get('statMatched').textContent(), '2');
     assert.equal(await get('statUnmatched').textContent(), '1');
+    assert.match(await get('reconcile').textContent(), /跳过 49 行/);
     const output = await download(page, get('exportAll'));
     const orderRows = grid(output, '采购匹配结果');
-    assert.deepEqual(orderRows.slice(1).map(r => r[0]), [longId,'','DEMO-2','DEMO-3']);
-    assert.match(orderRows[1][2], /^\d{4}\/\d{2}\/\d{2}$/);
-    assert.deepEqual(orderRows.slice(1).map(r => r[4]), [1,'',1,0]);
-    assert.equal(orderRows[4][2], '');
+    assert.deepEqual(orderRows[0].slice(0,3), orderHeader);
+    assert.deepEqual(orderRows.slice(1).map(r => r[0]), purchase.map(r=>r[0]));
+    assert.equal(orderRows[1][2], existingDate);
+    assert.match(orderRows[2][2], /^\d{4}\/\d{2}\/\d{2}$/);
+    assert.deepEqual(orderRows.slice(1).map(r => r[4]), [0,1,'',1,...history.map(()=>0),0]);
+    assert.equal(orderRows.at(-1)[2], '');
+    await frame.locator('[data-filter="unmatched"]').click();
+    assert.equal(await get('resultTable').locator('tbody tr').count(), 1);
+    assert.match(await get('resultTable').textContent(), /DEMO-3/);
     await get('copyAllC').click();
     await frame.getByText(/已按原序复制全部 C 列/).waitFor();
-    if (target.startsWith('https:')) {
+    if (web) {
       const copied = await page.evaluate(() => navigator.clipboard.readText());
-      assert.equal(copied.replace(/\r/g,''), ['回填值',orderRows[1][2],'',orderRows[3][2],''].join('\n'));
+      const expected = [existingDate,orderRows[2][2],'',orderRows[4][2],...history.map(r=>r[2]),''];
+      assert.equal(copied.replace(/\r/g,''), expected.join('\n'));
+      const cells = await page.evaluate(async () => {
+        const item = (await navigator.clipboard.read()).find(i=>i.types.includes('text/html'));
+        const html = await (await item.getType('text/html')).text();
+        const doc = new DOMParser().parseFromString(html,'text/html');
+        return [...doc.querySelectorAll('table tr')].map(row=>[...row.cells].map(cell=>cell.textContent));
+      });
+      assert.deepEqual(cells,expected.map(v=>[v]));
     }
     await get('viewInventory').click();
     assert.equal(grid(await download(page, get('exportCurrent'))).length, 3);

@@ -3,6 +3,8 @@
   'use strict';
   const DEFAULT_SIZES = ['5','5.5','6','6.5','7','7.5','8','8.5','9','9.5','10','11','12','10.5'];
   const str = v => v == null ? '' : String(v).trim();
+  const shipDateText = v => String(v ?? '');
+  const hasShipDate = row => shipDateText(row[2]) !== '';
   const numericSize = v => { const s = str(v); return /^\d+(\.\d+)?$/.test(s) ? String(Number(s)) : s; };
   const key = v => str(v).replace(/[－–—]/g, '-').replace(/\s*-\s*/g, '-').replace(/-(\d+(?:\.\d+)?)$/, (_, n) => '-' + numericSize(n));
   function parseText(text) {
@@ -18,7 +20,7 @@
     }
     if (quoted) throw Error('粘贴内容有未闭合的双引号，请重新复制完整区域。');
     row.push(cell);rows.push(row);
-    while(rows.length && rows.at(-1).every(v=>!str(v))) rows.pop();
+    while(rows.length && rows.at(-1).every(v=>v==='')) rows.pop();
     if(rows.length>20000) throw Error('最多支持 20,000 行，请分批处理。');
     return rows;
   }
@@ -92,7 +94,7 @@
   function orderDataRows(rows){
     const data=rows.map(r=>[...r]);
     if(data.length&&isOrderHeader(data[0]))data.shift();
-    while(data.length&&data.at(-1).every(v=>!str(v)))data.pop();
+    while(data.length&&!hasShipDate(data.at(-1))&&data.at(-1).every(v=>!str(v)))data.pop();
     return data;
   }
   function today(date=new Date()){
@@ -118,28 +120,37 @@
   function parseOrders(rows){
     const records=[],errors=[],warnings=[];const pairs=new Set();let duplicate=0;
     orderDataRows(rows).forEach((r,i)=>{
-      if(r.every(v=>!str(v))){records.push({id:'',sku:'',sourceRow:i+1,empty:true});return;}
       if(isOrderHeader(r)){errors.push('第 '+(i+1)+' 行出现重复表头，请删除后继续，以免回填时错行。');return;}
+      const id=str(r[0]),sku=str(r[1]),shipDate=shipDateText(r[2]),sourceRow=i+1;
+      if(shipDate!==''){records.push({id,sku,shipDate,sourceRow});return;}
+      if(!id&&!sku){records.push({id,sku,shipDate,sourceRow,empty:true});return;}
       if(!str(r[0])||!str(r[1])){errors.push('第 '+(i+1)+' 行缺少订单编号或采购货号。');return;}
       if(typeof r[0]==='number'&&!Number.isSafeInteger(r[0])){errors.push('第 '+(i+1)+' 行订单编号已按超长数字存储，可能丢失精度。请将原始准确编号以文本格式复制粘贴。');return;}
       if(/^[+-]?\d+(\.\d+)?e[+-]?\d+$/i.test(str(r[0]))){errors.push('第 '+(i+1)+' 行订单编号是科学计数法，请复制完整的文本编号。');return;}
-      const id=str(r[0]),sku=str(r[1]),pair=id+'\u0000'+key(r[1]);
+      const pair=id+'\u0000'+key(sku);
       if(pairs.has(pair))duplicate++;pairs.add(pair);
-      records.push({id,sku,sourceRow:i+1});
+      records.push({id,sku,shipDate,sourceRow});
     });
     if(duplicate)warnings.push('有 '+duplicate+' 行订单编号与货号重复；每行仍按一双参与分配，请核对是否重复粘贴。');
-    if(rows.some(r=>r.slice(2).some(v=>str(v))))warnings.push('只使用前两列：订单编号、采购货号。原有 C 列及之后的内容不参与匹配。');
     return {records,errors,warnings,count:records.filter(r=>!r.empty).length};
   }
   function match(supply,orders,mode='date',matchDate=today()){
     if(!['date','one','total'].includes(mode))throw Error('请选择有效的 C 列回填方式。');
     const stock=new Map(supply.map(r=>[key(r.sku),{sku:r.sku,total:r.qty,left:r.qty}]));
-    const rows=orders.map(o=>{if(o.empty)return {...o,value:'',matched:false,status:''};const s=stock.get(key(o.sku));const matched=!!s&&s.left>0;if(matched)s.left--;return {...o,value:matched?(mode==='date'?matchDate:mode==='one'?1:s.total):'',matched,status:matched?'已匹配':s?'出货数量不足':'出货单无此货号'};});
+    const rows=orders.map(o=>{
+      if(o.empty)return {...o,value:'',matched:false,status:''};
+      if(shipDateText(o.shipDate)!=='')return {...o,value:o.shipDate,matched:false,skipped:true,status:'C 列已有值'};
+      const s=stock.get(key(o.sku));
+      const matched=!!s&&s.left>0;
+      if(matched)s.left--;
+      return {...o,value:matched?(mode==='date'?matchDate:mode==='one'?1:s.total):'',matched,status:matched?'已匹配':s?'出货数量不足':'出货单无此货号'};
+    });
     const inventory=[...stock.values()].map(s=>({sku:s.sku,total:s.total,allocated:s.total-s.left,left:s.left}));
     const matched=rows.filter(r=>r.matched).length;const total=supply.reduce((a,r)=>a+r.qty,0);
     if(total!==matched+inventory.reduce((a,r)=>a+r.left,0))throw Error('数量核对未通过，请检查输入。');
     const orderCount=orders.filter(o=>!o.empty).length;
-    return {rows,inventory,total,matched,unmatched:orderCount-matched,left:total-matched,mode,matchDate:mode==='date'?matchDate:'',orderCount};
+    const skipped=rows.filter(r=>r.skipped).length;
+    return {rows,inventory,total,matched,skipped,unmatched:orderCount-matched-skipped,left:total-matched,mode,matchDate:mode==='date'?matchDate:'',orderCount};
   }
   const api={DEFAULT_SIZES,str,key,numericSize,parseText,convertFixed,convertDetail,importSupplier,parseOrders,match,isOrderHeader,orderDataRows,today,gridSummary};
   if(typeof module!=='undefined'&&module.exports)module.exports=api;else root.ShippingCore=api;
